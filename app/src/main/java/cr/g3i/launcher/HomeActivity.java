@@ -6,10 +6,13 @@ import android.content.ActivityNotFoundException;
 import android.content.ComponentName;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.res.ColorStateList;
 import android.content.pm.ResolveInfo;
 import android.content.res.Configuration;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.graphics.drawable.RippleDrawable;
+import android.net.Uri;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.provider.Settings;
@@ -17,6 +20,7 @@ import android.view.Gravity;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.ImageView;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextClock;
@@ -30,16 +34,21 @@ public final class HomeActivity extends Activity {
     private static final String DIPLAY = "com.shihab.diplay";
     private static final String HEADUNIT = "com.andrerinas.headunitrevived";
     private static final int MAX_SHORTCUTS = 4;
-    private static final int BACKGROUND = Color.rgb(16, 22, 32);
-    private static final int SURFACE = Color.rgb(30, 41, 56);
-    private static final int CONTROL = Color.rgb(44, 58, 77);
-    private static final int ACCENT = Color.rgb(126, 228, 211);
+    private static final int PICK_PHOTO = 1;
+    private static final int PICK_LOGO = 2;
+    private static final int BACKGROUND = 0xff090f18;
+    private static final int SURFACE = 0xff141e2d;
+    private static final int CONTROL = 0xff22334a;
+    private static final int ACCENT = 0xff7cead9;
+    private static final int SECONDARY = 0xffb0bfd2;
     private SharedPreferences preferences;
 
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         preferences = getSharedPreferences("home", MODE_PRIVATE);
+        getWindow().setStatusBarColor(BACKGROUND);
+        getWindow().setNavigationBarColor(BACKGROUND);
     }
 
     @Override
@@ -58,41 +67,70 @@ public final class HomeActivity extends Activity {
         scroll.setBackgroundColor(BACKGROUND);
 
         LinearLayout home = column();
-        home.setPadding(dp(18), dp(14), dp(18), dp(14));
+        home.setPadding(dp(18), dp(14), dp(18), dp(20));
         scroll.addView(home);
 
         LinearLayout header = new LinearLayout(this);
         header.setGravity(Gravity.CENTER_VERTICAL);
-        header.addView(text("XPENG   /   G3i HOME", 19, ACCENT, true),
-                new LinearLayout.LayoutParams(0, -2, 1));
+        LinearLayout brand = column();
+        ImageView logo = new ImageView(this);
+        logo.setContentDescription("XPENG");
+        if (loadImage(logo, "logo")) {
+            logo.setScaleType(ImageView.ScaleType.FIT_START);
+            brand.addView(logo, new LinearLayout.LayoutParams(dp(112), dp(36)));
+        } else {
+            logo.setImageResource(R.drawable.xpeng_mark);
+            logo.setImportantForAccessibility(android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+            LinearLayout wordmarkRow = new LinearLayout(this);
+            wordmarkRow.setGravity(Gravity.CENTER_VERTICAL);
+            wordmarkRow.addView(logo, new LinearLayout.LayoutParams(dp(34), dp(20)));
+            TextView wordmark = text("XPENG", 22, Color.WHITE, true);
+            wordmark.setLetterSpacing(0.21f);
+            LinearLayout.LayoutParams wordmarkParams = new LinearLayout.LayoutParams(-2, -2);
+            wordmarkParams.setMarginStart(dp(9));
+            wordmarkRow.addView(wordmark, wordmarkParams);
+            brand.addView(wordmarkRow);
+        }
+        brand.addView(text("G3i   /   " + (projection ? "PROYECCIÓN" : "CABINA"), 11, ACCENT, true));
+        header.addView(brand, new LinearLayout.LayoutParams(0, -2, 1));
         TextClock clock = new TextClock(this);
-        clock.setTextSize(19);
+        clock.setTextSize(24);
         clock.setTextColor(Color.WHITE);
         header.addView(clock);
         home.addView(header);
 
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(wide ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL);
-        LinearLayout vehicle = panel("MI VEH�CULO", "XPENG G3i");
+        FrameLayout vehicle = new FrameLayout(this);
+        vehicle.setBackground(rounded(SURFACE));
+        vehicle.setClipToOutline(true);
         ImageView car = new ImageView(this);
-        car.setImageResource(R.drawable.g3i_illustration);
-        car.setContentDescription("Ilustraci�n del XPENG G3i");
-        car.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        vehicle.addView(car, new LinearLayout.LayoutParams(-1, dp(projection ? 100 : 176)));
-        LinearLayout connect = panel("PROYECCI�N", "Conecta tu tel�fono");
-        Button carPlay = action("Apple CarPlay\nDiPlay � iPhone", () -> openReceiver(DIPLAY, "DiPlay"));
-        Button androidAuto = action("Android Auto\nOpen Headunit � Android",
-                () -> openReceiver(HEADUNIT, "Open Headunit"));
-        if (projection) {
-            carPlay.setMinHeight(dp(84));
-            androidAuto.setMinHeight(dp(84));
+        boolean hasPhoto = loadImage(car, "photo");
+        if (!hasPhoto) {
+            car.setImageResource(R.drawable.g3i_illustration);
+            car.setPadding(dp(24), dp(24), dp(24), dp(38));
         }
+        car.setContentDescription("XPENG G3i");
+        car.setScaleType(hasPhoto ? ImageView.ScaleType.CENTER_CROP : ImageView.ScaleType.FIT_CENTER);
+        vehicle.addView(car, new FrameLayout.LayoutParams(-1, dp(projection ? 168 : 260)));
+        TextView vehicleLabel = text("XPENG G3i", 23, Color.WHITE, true);
+        vehicleLabel.setPadding(dp(16), dp(24), dp(16), dp(12));
+        vehicleLabel.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{Color.TRANSPARENT, 0xee090f18}));
+        vehicle.addView(vehicleLabel, new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM));
+        LinearLayout connect = panel("CONECTIVIDAD", "Proyección");
+        Button carPlay = action("Apple CarPlay\nDiPlay · iPhone", () -> openReceiver(DIPLAY, "DiPlay"));
+        Button androidAuto = action("Android Auto\nOpen Headunit · Android",
+                () -> openReceiver(HEADUNIT, "Open Headunit"));
+        carPlay.setMinHeight(dp(projection ? 84 : 66));
+        androidAuto.setMinHeight(dp(projection ? 84 : 66));
+        carPlay.setTextColor(ACCENT);
         connect.addView(carPlay);
         connect.addView(androidAuto);
         LinearLayout widgets = panel("WIDGETS", "Multimedia");
-        widgets.addView(text("Integraci�n pendiente", 14, ACCENT, false));
-        widgets.addView(text("Micr�fono", 20, Color.WHITE, true));
-        widgets.addView(text("Integraci�n pendiente", 14, ACCENT, false));
+        widgets.addView(text("Integración pendiente", 14, SECONDARY, false));
+        widgets.addView(text("Micrófono", 20, Color.WHITE, true));
+        widgets.addView(text("Integración pendiente", 14, SECONDARY, false));
 
         if (wide && projection) {
             LinearLayout side = column();
@@ -117,7 +155,7 @@ public final class HomeActivity extends Activity {
             if (resolved != null) {
                 if (dockRow.getChildCount() == 0) dock.addView(dockRow);
                 dockRow.addView(action(resolved.loadLabel(getPackageManager()).toString(),
-                        () -> open(Intent.makeMainActivity(component), "Aplicaci�n no disponible")),
+                        () -> open(Intent.makeMainActivity(component), "Aplicación no disponible")),
                         new LinearLayout.LayoutParams(0, -2, 1));
                 if (dockRow.getChildCount() == 2) dockRow = new LinearLayout(this);
             }
@@ -131,10 +169,20 @@ public final class HomeActivity extends Activity {
     }
 
     private void showSettings() {
-        String[] choices = {"Cabina", "Proyecci�n", "Ajustes de red de Android"};
+        String[] choices = {"Cabina", "Proyección", "Ajustes de red de Android", "Elegir foto del G3i", "Elegir logo XPENG"};
         new AlertDialog.Builder(this).setTitle("Ajustes del Home").setItems(choices, (dialog, index) -> {
             if (index == 2) {
                 open(new Intent(Settings.ACTION_WIRELESS_SETTINGS), "Ajustes de red no disponibles");
+                return;
+            }
+            if (index >= 3) {
+                Intent picker = new Intent(Intent.ACTION_OPEN_DOCUMENT)
+                        .addCategory(Intent.CATEGORY_OPENABLE).setType("image/*");
+                try {
+                    startActivityForResult(picker, index == 3 ? PICK_PHOTO : PICK_LOGO);
+                } catch (ActivityNotFoundException exception) {
+                    toast("Selector de imágenes no disponible");
+                }
                 return;
             }
             preferences.edit().putBoolean("projection", index == 1).apply();
@@ -142,9 +190,50 @@ public final class HomeActivity extends Activity {
         }).show();
     }
 
+    @Override
+    protected void onActivityResult(int request, int result, Intent data) {
+        super.onActivityResult(request, result, data);
+        if ((request != PICK_PHOTO && request != PICK_LOGO) || result != RESULT_OK
+                || data == null || data.getData() == null) return;
+        Uri uri = data.getData();
+        try {
+            getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            String key = request == PICK_PHOTO ? "photo" : "logo";
+            String previous = preferences.getString(key, null);
+            preferences.edit().putString(key, uri.toString()).apply();
+            String other = preferences.getString(request == PICK_PHOTO ? "logo" : "photo", null);
+            if (previous != null && !previous.equals(uri.toString()) && !previous.equals(other)) {
+                try {
+                    getContentResolver().releasePersistableUriPermission(Uri.parse(previous),
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                } catch (SecurityException ignored) {
+                    // The previous image provider may already have revoked access.
+                }
+            }
+        } catch (SecurityException exception) {
+            toast("No se pudo conservar el acceso a la imagen");
+        }
+    }
+
+    private boolean loadImage(ImageView image, String key) {
+        String saved = preferences.getString(key, null);
+        if (saved == null) return false;
+        try {
+            android.graphics.ImageDecoder.Source source =
+                    android.graphics.ImageDecoder.createSource(getContentResolver(), Uri.parse(saved));
+            image.setImageDrawable(android.graphics.ImageDecoder.decodeDrawable(source, (decoder, info, src) -> {
+                int longestSide = Math.max(info.getSize().getWidth(), info.getSize().getHeight());
+                decoder.setTargetSampleSize(Math.max(1, (int) Math.ceil(longestSide / 1600.0)));
+            }));
+            return true;
+        } catch (java.io.IOException | SecurityException exception) {
+            return false;
+        }
+    }
+
     private void showApps() {
         new AlertDialog.Builder(this).setTitle("Aplicaciones instaladas")
-                .setItems(new String[]{"Abrir aplicaci�n", "Editar accesos directos"},
+                .setItems(new String[]{"Abrir aplicación", "Editar accesos directos"},
                         (dialog, index) -> showAppPicker(index == 1)).show();
     }
 
@@ -164,10 +253,10 @@ public final class HomeActivity extends Activity {
         }
         AlertDialog.Builder picker = new AlertDialog.Builder(this);
         if (!edit) {
-            picker.setTitle("Abrir aplicaci�n").setItems(labels, (dialog, index) ->
-                    open(Intent.makeMainActivity(componentOf(apps.get(index))), "Aplicaci�n no disponible"));
+            picker.setTitle("Abrir aplicación").setItems(labels, (dialog, index) ->
+                    open(Intent.makeMainActivity(componentOf(apps.get(index))), "Aplicación no disponible"));
         } else {
-            picker.setTitle("Accesos directos � m�ximo 4")
+            picker.setTitle("Accesos directos · máximo 4")
                     .setMultiChoiceItems(labels, checked, (dialog, index, enabled) -> {
                         String key = componentOf(apps.get(index)).flattenToString();
                         if (!enabled) {
@@ -208,7 +297,7 @@ public final class HomeActivity extends Activity {
     private void openReceiver(String packageName, String label) {
         Intent launch = getPackageManager().getLaunchIntentForPackage(packageName);
         if (launch == null) {
-            toast(label + " no est� instalado o no tiene pantalla de inicio");
+            toast(label + " no está instalado o no tiene pantalla de inicio");
             return;
         }
         open(launch, "No se pudo abrir " + label);
@@ -231,7 +320,7 @@ public final class HomeActivity extends Activity {
         return panel;
     }
 
-    private void addTile(LinearLayout row, LinearLayout tile, boolean wide, float weight) {
+    private void addTile(LinearLayout row, android.view.View tile, boolean wide, float weight) {
         LinearLayout.LayoutParams params = wide
                 ? new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, weight)
                 : new LinearLayout.LayoutParams(-1, -2);
@@ -264,7 +353,7 @@ public final class HomeActivity extends Activity {
         button.setMinHeight(dp(52));
         button.setPadding(dp(10), dp(8), dp(10), dp(8));
         android.graphics.drawable.InsetDrawable background = new android.graphics.drawable.InsetDrawable(
-                rounded(CONTROL), dp(3));
+                new RippleDrawable(ColorStateList.valueOf(0x447cead9), rounded(CONTROL), null), dp(3));
         button.setBackground(background);
         button.setOnClickListener(view -> click.run());
         return button;
@@ -273,7 +362,7 @@ public final class HomeActivity extends Activity {
     private GradientDrawable rounded(int color) {
         GradientDrawable drawable = new GradientDrawable();
         drawable.setColor(color);
-        drawable.setCornerRadius(dp(13));
+        drawable.setCornerRadius(dp(19));
         return drawable;
     }
 
