@@ -189,16 +189,14 @@ public final class HomeActivity extends Activity {
             car.setPadding(dp(20), dp(68), dp(20), dp(24));
         }
         car.setContentDescription("XPENG G3i");
-        car.setScaleType(hasPhoto ? ImageView.ScaleType.CENTER_CROP : ImageView.ScaleType.FIT_CENTER);
+        car.setScaleType(ImageView.ScaleType.FIT_CENTER);
         int heroHeight = projection ? 176 : Math.min(360, Math.max(246, screen.screenWidthDp * 3 / 5));
         vehicle.addView(car, new FrameLayout.LayoutParams(-1, dp(heroHeight)));
         LinearLayout vehicleLabel = column();
         vehicleLabel.setPadding(dp(20), dp(13), dp(20), dp(20));
-        if (hasPhoto) vehicleLabel.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-                new int[]{0xdd090f18, Color.TRANSPARENT}));
         vehicleLabel.addView(text("MI VEHÍCULO", 11, ACCENT, true));
         vehicleLabel.addView(text("G3i", projection ? 34 : 54, Color.WHITE, true));
-        vehicle.addView(vehicleLabel, new FrameLayout.LayoutParams(-1, -2, Gravity.TOP));
+        if (!hasPhoto) vehicle.addView(vehicleLabel, new FrameLayout.LayoutParams(-1, -2, Gravity.TOP));
 
         LinearLayout connect = column();
         connect.addView(text("CONECTA TU TELÉFONO", 12, SECONDARY, true));
