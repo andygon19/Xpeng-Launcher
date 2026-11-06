@@ -46,6 +46,8 @@ import java.util.Map;
 public final class HomeActivity extends Activity {
     private static final String DIPLAY = "com.shihab.diplay";
     private static final String HEADUNIT = "com.andrerinas.headunitrevived";
+    private static final String DIPLAY_RELEASES = "https://github.com/shihabal3amri/DiPlay/releases";
+    private static final String HEADUNIT_RELEASES = "https://github.com/andreknieriem/open-headunit/releases";
     private static final int MAX_SHORTCUTS = 4;
     private static final int PICK_PHOTO = 1;
     private static final int PICK_LOGO = 2;
@@ -61,6 +63,8 @@ public final class HomeActivity extends Activity {
     private TextView bluetoothStatus;
     private TextView networkStatus;
     private TextView phoneStatus;
+    private TextView hotspotStatus;
+    private String hotspotMessage = "";
     private ConnectionDial connectionDial;
     private final BroadcastReceiver connectionChanges = new BroadcastReceiver() {
         // targetSdk 28 uses the legacy BLUETOOTH permission; unavailable metadata is handled below.
@@ -117,6 +121,11 @@ public final class HomeActivity extends Activity {
     protected void onResume() {
         super.onResume();
         render();
+        G3iHotspot.ensure(this, status -> {
+            if (isDestroyed()) return;
+            hotspotMessage = status;
+            if (hotspotStatus != null) hotspotStatus.setText(status);
+        });
     }
 
     private void render() {
@@ -161,7 +170,18 @@ public final class HomeActivity extends Activity {
         TextClock clock = new TextClock(this);
         clock.setTextSize(24);
         clock.setTextColor(Color.WHITE);
-        header.addView(clock);
+        LinearLayout dateAndTime = column();
+        dateAndTime.setGravity(Gravity.END);
+        dateAndTime.addView(clock);
+        TextClock date = new TextClock(this);
+        String dateFormat = android.text.format.DateFormat.getBestDateTimePattern(
+                java.util.Locale.getDefault(), "EEEdMMM");
+        date.setFormat12Hour(dateFormat);
+        date.setFormat24Hour(dateFormat);
+        date.setTextSize(12);
+        date.setTextColor(SECONDARY);
+        dateAndTime.addView(date);
+        header.addView(dateAndTime);
         home.addView(header);
 
         LinearLayout modes = new LinearLayout(this);
@@ -280,6 +300,11 @@ public final class HomeActivity extends Activity {
         networkStatus = addStatus(status, "RED");
         phoneStatus = addStatus(status, "TELÉFONO");
         panel.addView(status, new LinearLayout.LayoutParams(-1, -2));
+        if (android.os.Build.VERSION.SDK_INT == android.os.Build.VERSION_CODES.P) {
+            hotspotStatus = text(hotspotMessage, 12, SECONDARY, false);
+            hotspotStatus.setGravity(Gravity.CENTER);
+            panel.addView(hotspotStatus);
+        }
         return panel;
     }
 
@@ -365,8 +390,16 @@ public final class HomeActivity extends Activity {
     }
 
     private Button receiverTile(String platform, String title, String packageName, String receiver, int color) {
-        String availability = getPackageManager().getLaunchIntentForPackage(packageName) == null
-                ? "App no instalada" : "Abrir " + receiver;
+        String availability = "Ver versiones de " + receiver;
+        if (getPackageManager().getLaunchIntentForPackage(packageName) != null) {
+            availability = "Abrir " + receiver;
+            try {
+                String version = getPackageManager().getPackageInfo(packageName, 0).versionName;
+                if (version != null && !version.isEmpty()) availability = receiver + " " + version;
+            } catch (android.content.pm.PackageManager.NameNotFoundException ignored) {
+                // The app may be removed while this screen is being drawn.
+            }
+        }
         Button tile = action("", () -> openReceiver(packageName, receiver));
         android.text.SpannableString label = new android.text.SpannableString(
                 platform + "\n" + title + "\n" + availability);
@@ -386,13 +419,24 @@ public final class HomeActivity extends Activity {
     }
 
     private void showSettings() {
-        String[] choices = {"Cabina", "Proyección", "Ajustes de red de Android", "Elegir foto del G3i", "Elegir logo XPENG"};
+        String[] choices = {"Cabina", "Proyección", "Ajustes de red de Android", "Elegir foto del G3i",
+                "Elegir logo XPENG", "Permitir hotspot automático", "Versiones de DiPlay",
+                "Versiones de Open Headunit"};
         new AlertDialog.Builder(this).setTitle("Ajustes del Home").setItems(choices, (dialog, index) -> {
             if (index == 2) {
                 open(new Intent(Settings.ACTION_WIRELESS_SETTINGS), "Ajustes de red no disponibles");
                 return;
             }
-            if (index >= 3) {
+            if (index == 5) {
+                open(new Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS, Uri.parse("package:" + getPackageName())),
+                        "La pantalla de permisos no está disponible");
+                return;
+            }
+            if (index >= 6) {
+                openReceiverReleases(index == 6 ? DIPLAY : HEADUNIT);
+                return;
+            }
+            if (index == 3 || index == 4) {
                 Intent picker = new Intent(Intent.ACTION_OPEN_DOCUMENT)
                         .addCategory(Intent.CATEGORY_OPENABLE).setType("image/*");
                 try {
@@ -513,10 +557,15 @@ public final class HomeActivity extends Activity {
     private void openReceiver(String packageName, String label) {
         Intent launch = getPackageManager().getLaunchIntentForPackage(packageName);
         if (launch == null) {
-            toast(label + " no está instalado o no tiene pantalla de inicio");
+            openReceiverReleases(packageName);
             return;
         }
         open(launch, "No se pudo abrir " + label);
+    }
+
+    private void openReceiverReleases(String packageName) {
+        String url = DIPLAY.equals(packageName) ? DIPLAY_RELEASES : HEADUNIT_RELEASES;
+        open(new Intent(Intent.ACTION_VIEW, Uri.parse(url)), "No hay navegador para abrir GitHub");
     }
 
     private void open(Intent intent, String message) {
