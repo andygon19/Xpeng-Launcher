@@ -2,9 +2,16 @@ package cr.g3i.launcher;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothClass;
+import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothManager;
 import android.content.ActivityNotFoundException;
+import android.content.BroadcastReceiver;
 import android.content.ComponentName;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.res.ColorStateList;
 import android.content.pm.ResolveInfo;
@@ -13,12 +20,15 @@ import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.RippleDrawable;
 import android.net.Uri;
+import android.net.ConnectivityManager;
+import android.net.NetworkCapabilities;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.provider.Settings;
 import android.text.Spanned;
 import android.view.Gravity;
 import android.view.ViewGroup;
+import android.view.View;
 import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.FrameLayout;
@@ -29,7 +39,9 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public final class HomeActivity extends Activity {
     private static final String DIPLAY = "com.shihab.diplay";
@@ -43,6 +55,42 @@ public final class HomeActivity extends Activity {
     private static final int ACCENT = 0xff7cead9;
     private static final int SECONDARY = 0xffb0bfd2;
     private SharedPreferences preferences;
+    private final Map<String, String> phones = new HashMap<>();
+    private TextView connectionTitle;
+    private TextView connectionDetail;
+    private TextView bluetoothStatus;
+    private TextView networkStatus;
+    private TextView phoneStatus;
+    private ConnectionDial connectionDial;
+    private final BroadcastReceiver connectionChanges = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) {
+            String action = intent.getAction();
+            if (BluetoothAdapter.ACTION_STATE_CHANGED.equals(action)
+                    && intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, -1) == BluetoothAdapter.STATE_OFF) {
+                phones.clear();
+            }
+            if (BluetoothDevice.ACTION_ACL_CONNECTED.equals(action)
+                    || BluetoothDevice.ACTION_ACL_DISCONNECTED.equals(action)) {
+                BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
+                if (device != null) {
+                    try {
+                        if (BluetoothDevice.ACTION_ACL_DISCONNECTED.equals(action)) {
+                            phones.remove(device.getAddress());
+                        } else {
+                            BluetoothClass deviceClass = device.getBluetoothClass();
+                            if (deviceClass != null && deviceClass.getMajorDeviceClass() == BluetoothClass.Device.Major.PHONE) {
+                                String name = device.getName();
+                                phones.put(device.getAddress(), name == null || name.isEmpty() ? "Teléfono" : name);
+                            }
+                        }
+                    } catch (SecurityException ignored) {
+                        // The firmware may withhold access to Bluetooth device metadata.
+                    }
+                }
+            }
+            refreshConnection();
+        }
+    };
 
     @Override
     protected void onCreate(Bundle state) {
@@ -50,6 +98,17 @@ public final class HomeActivity extends Activity {
         preferences = getSharedPreferences("home", MODE_PRIVATE);
         getWindow().setStatusBarColor(BACKGROUND);
         getWindow().setNavigationBarColor(BACKGROUND);
+        IntentFilter filter = new IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED);
+        filter.addAction(BluetoothDevice.ACTION_ACL_CONNECTED);
+        filter.addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED);
+        filter.addAction(ConnectivityManager.CONNECTIVITY_ACTION);
+        registerReceiver(connectionChanges, filter);
+    }
+
+    @Override
+    protected void onDestroy() {
+        unregisterReceiver(connectionChanges);
+        super.onDestroy();
     }
 
     @Override
@@ -112,6 +171,8 @@ public final class HomeActivity extends Activity {
         modes.addView(cabinMode, new LinearLayout.LayoutParams(0, -2, 1));
         modes.addView(projectionMode, new LinearLayout.LayoutParams(0, -2, 1));
         home.addView(modes);
+        home.addView(shortcutShelf());
+        home.addView(connectionPanel());
 
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(wide ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL);
@@ -159,22 +220,6 @@ public final class HomeActivity extends Activity {
         }
         home.addView(content, new LinearLayout.LayoutParams(-1, -2));
 
-        LinearLayout dock = column();
-        LinearLayout dockRow = new LinearLayout(this);
-        for (String key : shortcutKeys()) {
-            ComponentName component = ComponentName.unflattenFromString(key);
-            if (component == null) continue;
-            ResolveInfo resolved = getPackageManager().resolveActivity(
-                    Intent.makeMainActivity(component), 0);
-            if (resolved != null) {
-                if (dockRow.getChildCount() == 0) dock.addView(dockRow);
-                dockRow.addView(action(resolved.loadLabel(getPackageManager()).toString(),
-                        () -> open(Intent.makeMainActivity(component), "Aplicación no disponible")),
-                        new LinearLayout.LayoutParams(0, -2, 1));
-                if (dockRow.getChildCount() == 2) dockRow = new LinearLayout(this);
-            }
-        }
-        home.addView(dock);
         LinearLayout actions = new LinearLayout(this);
         actions.setPadding(dp(15), dp(5), dp(15), dp(7));
         actions.setBackgroundColor(SURFACE);
@@ -182,6 +227,136 @@ public final class HomeActivity extends Activity {
         actions.addView(action("Ajustes", this::showSettings), new LinearLayout.LayoutParams(0, -2, 1));
         shell.addView(actions, new LinearLayout.LayoutParams(-1, -2));
         setContentView(shell);
+        refreshConnection();
+    }
+
+    private View shortcutShelf() {
+        android.widget.HorizontalScrollView shelf = new android.widget.HorizontalScrollView(this);
+        shelf.setHorizontalScrollBarEnabled(false);
+        LinearLayout row = new LinearLayout(this);
+        shelf.addView(row);
+        for (String key : shortcutKeys()) {
+            ComponentName component = ComponentName.unflattenFromString(key);
+            if (component == null) continue;
+            Intent launch = Intent.makeMainActivity(component);
+            ResolveInfo app = getPackageManager().resolveActivity(launch, 0);
+            if (app == null) continue;
+            Button shortcut = action(app.loadLabel(getPackageManager()).toString(),
+                    () -> open(launch, "Aplicación no disponible"));
+            android.graphics.drawable.Drawable icon = app.loadIcon(getPackageManager()).mutate();
+            icon.setBounds(0, 0, dp(30), dp(30));
+            shortcut.setCompoundDrawables(null, icon, null, null);
+            shortcut.setCompoundDrawablePadding(dp(4));
+            shortcut.setSingleLine(true);
+            shortcut.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            row.addView(shortcut, new LinearLayout.LayoutParams(dp(110), dp(74)));
+        }
+        row.addView(action("＋ Agregar app", () -> showAppPicker(true)));
+        return shelf;
+    }
+
+    private View connectionPanel() {
+        LinearLayout panel = column();
+        panel.setGravity(Gravity.CENTER_HORIZONTAL);
+        panel.setPadding(dp(12), dp(10), dp(12), dp(12));
+        panel.setBackground(rounded(SURFACE));
+        LinearLayout.LayoutParams outer = new LinearLayout.LayoutParams(-1, -2);
+        outer.setMargins(0, dp(9), 0, dp(10));
+        panel.setLayoutParams(outer);
+        connectionDial = new ConnectionDial();
+        panel.addView(connectionDial, new LinearLayout.LayoutParams(dp(145), dp(145)));
+        connectionTitle = text("", 24, Color.WHITE, true);
+        connectionTitle.setGravity(Gravity.CENTER);
+        connectionTitle.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+        panel.addView(connectionTitle);
+        connectionDetail = text("", 14, SECONDARY, false);
+        connectionDetail.setGravity(Gravity.CENTER);
+        panel.addView(connectionDetail);
+        panel.addView(action("Vincular teléfono", () -> open(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS),
+                "Ajustes de Bluetooth no disponibles")));
+
+        LinearLayout status = new LinearLayout(this);
+        bluetoothStatus = addStatus(status, "BLUETOOTH");
+        networkStatus = addStatus(status, "RED");
+        phoneStatus = addStatus(status, "TELÉFONO");
+        panel.addView(status, new LinearLayout.LayoutParams(-1, -2));
+        return panel;
+    }
+
+    private TextView addStatus(LinearLayout row, String label) {
+        LinearLayout tile = column();
+        tile.setPadding(dp(5), dp(5), dp(5), dp(5));
+        tile.addView(text(label, 10, SECONDARY, true));
+        TextView value = text("", 13, ACCENT, true);
+        tile.addView(value);
+        row.addView(tile, new LinearLayout.LayoutParams(0, -2, 1));
+        return value;
+    }
+
+    private void refreshConnection() {
+        if (connectionTitle == null) return;
+        BluetoothManager manager = getSystemService(BluetoothManager.class);
+        BluetoothAdapter adapter = manager == null ? null : manager.getAdapter();
+        String bluetooth = "No disponible";
+        if (adapter != null) {
+            try {
+                bluetooth = adapter.isEnabled() ? "Activado" : "Apagado";
+            } catch (SecurityException ignored) {
+                bluetooth = "Sin acceso";
+            }
+        }
+        boolean linked = !phones.isEmpty() && "Activado".equals(bluetooth);
+        bluetoothStatus.setText(bluetooth);
+        phoneStatus.setText(linked ? "Por Bluetooth" : "Sin confirmar");
+        connectionTitle.setText(linked ? phones.values().iterator().next() : "Conecta tu teléfono");
+        connectionDetail.setText(linked ? "Enlace Bluetooth detectado" : "Vincula el teléfono o abre tu app de proyección");
+        connectionDial.linked = linked;
+        connectionDial.invalidate();
+
+        ConnectivityManager connectivity = getSystemService(ConnectivityManager.class);
+        NetworkCapabilities network = connectivity == null ? null
+                : connectivity.getNetworkCapabilities(connectivity.getActiveNetwork());
+        String transport = "Sin red activa";
+        if (network != null) {
+            if (network.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) transport = "Wi-Fi";
+            else if (network.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)) transport = "Ethernet";
+            else if (network.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) transport = "Datos móviles";
+            else transport = "Otra red";
+        }
+        networkStatus.setText(transport);
+    }
+
+    private final class ConnectionDial extends View {
+        private final android.graphics.Paint pen = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        private boolean linked;
+
+        ConnectionDial() {
+            super(HomeActivity.this);
+            setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        }
+
+        @Override protected void onDraw(android.graphics.Canvas canvas) {
+            super.onDraw(canvas);
+            float center = Math.min(getWidth(), getHeight()) / 2f;
+            canvas.save();
+            canvas.translate(getWidth() / 2f, getHeight() / 2f);
+            pen.setStyle(android.graphics.Paint.Style.STROKE);
+            pen.setStrokeWidth(dp(1));
+            pen.setColor(0xff53687c);
+            for (int angle = 0; angle < 360; angle += 10) {
+                canvas.drawLine(0, center * .83f, 0, center * .92f, pen);
+                canvas.rotate(10);
+            }
+            float radius = center * .72f;
+            pen.setStrokeWidth(dp(3));
+            pen.setColor(linked ? ACCENT : 0xff627c94);
+            canvas.drawArc(-radius, -radius, radius, radius, 135, 270, false, pen);
+            pen.setColor(linked ? ACCENT : SECONDARY);
+            canvas.drawRoundRect(-center * .17f, -center * .25f, center * .17f, center * .25f,
+                    dp(4), dp(4), pen);
+            canvas.drawLine(-center * .055f, center * .15f, center * .055f, center * .15f, pen);
+            canvas.restore();
+        }
     }
 
     private void selectMode(boolean projection) {
