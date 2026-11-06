@@ -442,7 +442,17 @@ public final class HomeActivity extends Activity {
                 try {
                     startActivityForResult(picker, index == 3 ? PICK_PHOTO : PICK_LOGO);
                 } catch (ActivityNotFoundException exception) {
-                    toast("Selector de imágenes no disponible");
+                    if (android.os.Build.VERSION.SDK_INT == 28) {
+                        if (checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+                                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                            requestPermissions(new String[]{android.Manifest.permission.READ_EXTERNAL_STORAGE}, 30);
+                        } else {
+                            render();
+                            toast("Coloca xpeng-logo.png y xpeng-g3i.png en Descargas/XPENG");
+                        }
+                    } else {
+                        toast("Selector de imágenes no disponible");
+                    }
                 }
                 return;
             }
@@ -475,12 +485,29 @@ public final class HomeActivity extends Activity {
         }
     }
 
+    @Override
+    public void onRequestPermissionsResult(int request, String[] permissions, int[] grants) {
+        super.onRequestPermissionsResult(request, permissions, grants);
+        if (request == 30 && grants.length > 0
+                && grants[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) render();
+    }
+
     private boolean loadImage(ImageView image, String key) {
         String saved = preferences.getString(key, null);
-        if (saved == null) return false;
+        if (saved != null && decodeImage(image, android.graphics.ImageDecoder.createSource(
+                getContentResolver(), Uri.parse(saved)))) return true;
+        if (android.os.Build.VERSION.SDK_INT != 28
+                || checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+                    != android.content.pm.PackageManager.PERMISSION_GRANTED) return false;
+        java.io.File downloads = android.os.Environment.getExternalStoragePublicDirectory(
+                android.os.Environment.DIRECTORY_DOWNLOADS);
+        String filename = "logo".equals(key) ? "xpeng-logo.png" : "xpeng-g3i.png";
+        java.io.File file = new java.io.File(downloads, "XPENG/" + filename);
+        return file.isFile() && decodeImage(image, android.graphics.ImageDecoder.createSource(file));
+    }
+
+    private boolean decodeImage(ImageView image, android.graphics.ImageDecoder.Source source) {
         try {
-            android.graphics.ImageDecoder.Source source =
-                    android.graphics.ImageDecoder.createSource(getContentResolver(), Uri.parse(saved));
             image.setImageDrawable(android.graphics.ImageDecoder.decodeDrawable(source, (decoder, info, src) -> {
                 int longestSide = Math.max(info.getSize().getWidth(), info.getSize().getHeight());
                 decoder.setTargetSampleSize(Math.max(1, (int) Math.ceil(longestSide / 1600.0)));
