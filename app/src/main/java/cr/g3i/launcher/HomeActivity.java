@@ -16,6 +16,7 @@ import android.net.Uri;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.provider.Settings;
+import android.text.Spanned;
 import android.view.Gravity;
 import android.view.ViewGroup;
 import android.widget.Button;
@@ -64,7 +65,10 @@ public final class HomeActivity extends Activity {
                 && screen.screenWidthDp >= 650;
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
-        scroll.setBackgroundColor(BACKGROUND);
+        scroll.setVerticalScrollBarEnabled(false);
+        LinearLayout shell = column();
+        shell.setBackgroundColor(BACKGROUND);
+        shell.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
 
         LinearLayout home = column();
         home.setPadding(dp(18), dp(14), dp(18), dp(20));
@@ -99,49 +103,59 @@ public final class HomeActivity extends Activity {
         header.addView(clock);
         home.addView(header);
 
+        LinearLayout modes = new LinearLayout(this);
+        modes.setPadding(0, dp(12), 0, dp(4));
+        Button cabinMode = action("Cabina", () -> selectMode(false));
+        Button projectionMode = action("Proyección", () -> selectMode(true));
+        (projection ? projectionMode : cabinMode).setTextColor(ACCENT);
+        (projection ? projectionMode : cabinMode).setSelected(true);
+        modes.addView(cabinMode, new LinearLayout.LayoutParams(0, -2, 1));
+        modes.addView(projectionMode, new LinearLayout.LayoutParams(0, -2, 1));
+        home.addView(modes);
+
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(wide ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL);
         FrameLayout vehicle = new FrameLayout(this);
-        vehicle.setBackground(rounded(SURFACE));
+        GradientDrawable heroBackground = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                new int[]{0xff31566a, 0xff142338, 0xff0c1524});
+        heroBackground.setCornerRadius(dp(22));
+        vehicle.setBackground(heroBackground);
         vehicle.setClipToOutline(true);
         ImageView car = new ImageView(this);
         boolean hasPhoto = loadImage(car, "photo");
         if (!hasPhoto) {
             car.setImageResource(R.drawable.g3i_illustration);
-            car.setPadding(dp(24), dp(24), dp(24), dp(38));
+            car.setPadding(dp(20), dp(68), dp(20), dp(24));
         }
         car.setContentDescription("XPENG G3i");
         car.setScaleType(hasPhoto ? ImageView.ScaleType.CENTER_CROP : ImageView.ScaleType.FIT_CENTER);
-        vehicle.addView(car, new FrameLayout.LayoutParams(-1, dp(projection ? 168 : 260)));
-        TextView vehicleLabel = text("XPENG G3i", 23, Color.WHITE, true);
-        vehicleLabel.setPadding(dp(16), dp(24), dp(16), dp(12));
-        vehicleLabel.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-                new int[]{Color.TRANSPARENT, 0xee090f18}));
-        vehicle.addView(vehicleLabel, new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM));
-        LinearLayout connect = panel("CONECTIVIDAD", "Proyección");
-        Button carPlay = action("Apple CarPlay\nDiPlay · iPhone", () -> openReceiver(DIPLAY, "DiPlay"));
-        Button androidAuto = action("Android Auto\nOpen Headunit · Android",
-                () -> openReceiver(HEADUNIT, "Open Headunit"));
-        carPlay.setMinHeight(dp(projection ? 84 : 66));
-        androidAuto.setMinHeight(dp(projection ? 84 : 66));
-        carPlay.setTextColor(ACCENT);
-        connect.addView(carPlay);
-        connect.addView(androidAuto);
-        LinearLayout widgets = panel("WIDGETS", "Multimedia");
-        widgets.addView(text("Integración pendiente", 14, SECONDARY, false));
-        widgets.addView(text("Micrófono", 20, Color.WHITE, true));
-        widgets.addView(text("Integración pendiente", 14, SECONDARY, false));
+        int heroHeight = projection ? 176 : Math.min(360, Math.max(246, screen.screenWidthDp * 3 / 5));
+        vehicle.addView(car, new FrameLayout.LayoutParams(-1, dp(heroHeight)));
+        LinearLayout vehicleLabel = column();
+        vehicleLabel.setPadding(dp(20), dp(13), dp(20), dp(20));
+        if (hasPhoto) vehicleLabel.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{0xdd090f18, Color.TRANSPARENT}));
+        vehicleLabel.addView(text("MI VEHÍCULO", 11, ACCENT, true));
+        vehicleLabel.addView(text("G3i", projection ? 34 : 54, Color.WHITE, true));
+        vehicle.addView(vehicleLabel, new FrameLayout.LayoutParams(-1, -2, Gravity.TOP));
+
+        LinearLayout connect = column();
+        connect.addView(text("CONECTA TU TELÉFONO", 12, SECONDARY, true));
+        boolean split = !projection && !wide && screen.screenWidthDp >= 330;
+        LinearLayout receivers = new LinearLayout(this);
+        receivers.setOrientation(split ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL);
+        addTile(receivers, receiverTile("iPhone", "Apple CarPlay", DIPLAY, "DiPlay", 0xff173c49), split, 1);
+        addTile(receivers, receiverTile("Android", "Android Auto", HEADUNIT, "Open Headunit", 0xff263559), split, 1);
+        connect.addView(receivers);
 
         if (wide && projection) {
             LinearLayout side = column();
             addTile(side, vehicle, false, 1);
-            addTile(side, widgets, false, 1);
             addTile(content, connect, true, 2);
             addTile(content, side, true, 1);
         } else {
             addTile(content, projection ? connect : vehicle, wide, 1);
             addTile(content, projection ? vehicle : connect, wide, 1.25f);
-            addTile(content, widgets, wide, 0.8f);
         }
         home.addView(content, new LinearLayout.LayoutParams(-1, -2));
 
@@ -162,10 +176,38 @@ public final class HomeActivity extends Activity {
         }
         home.addView(dock);
         LinearLayout actions = new LinearLayout(this);
+        actions.setPadding(dp(15), dp(5), dp(15), dp(7));
+        actions.setBackgroundColor(SURFACE);
         actions.addView(action("Apps", this::showApps), new LinearLayout.LayoutParams(0, -2, 1));
         actions.addView(action("Ajustes", this::showSettings), new LinearLayout.LayoutParams(0, -2, 1));
-        home.addView(actions);
-        setContentView(scroll);
+        shell.addView(actions, new LinearLayout.LayoutParams(-1, -2));
+        setContentView(shell);
+    }
+
+    private void selectMode(boolean projection) {
+        preferences.edit().putBoolean("projection", projection).apply();
+        render();
+    }
+
+    private Button receiverTile(String platform, String title, String packageName, String receiver, int color) {
+        String availability = getPackageManager().getLaunchIntentForPackage(packageName) == null
+                ? "App no instalada" : "Abrir " + receiver;
+        Button tile = action("", () -> openReceiver(packageName, receiver));
+        android.text.SpannableString label = new android.text.SpannableString(
+                platform + "\n" + title + "\n" + availability);
+        int titleStart = platform.length() + 1;
+        label.setSpan(new android.text.style.ForegroundColorSpan(ACCENT), 0, platform.length(),
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        label.setSpan(new android.text.style.StyleSpan(Typeface.BOLD), titleStart, titleStart + title.length(),
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        label.setSpan(new android.text.style.ForegroundColorSpan(SECONDARY), titleStart + title.length() + 1,
+                label.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        tile.setText(label);
+        tile.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
+        tile.setMinHeight(dp(112));
+        tile.setPadding(dp(14), dp(12), dp(12), dp(12));
+        tile.setBackground(new RippleDrawable(ColorStateList.valueOf(0x447cead9), rounded(color), null));
+        return tile;
     }
 
     private void showSettings() {
@@ -185,8 +227,7 @@ public final class HomeActivity extends Activity {
                 }
                 return;
             }
-            preferences.edit().putBoolean("projection", index == 1).apply();
-            render();
+            selectMode(index == 1);
         }).show();
     }
 
@@ -309,15 +350,6 @@ public final class HomeActivity extends Activity {
         } catch (ActivityNotFoundException | SecurityException exception) {
             toast(message);
         }
-    }
-
-    private LinearLayout panel(String label, String title) {
-        LinearLayout panel = column();
-        panel.setPadding(dp(14), dp(13), dp(14), dp(13));
-        panel.setBackground(rounded(SURFACE));
-        panel.addView(text(label, 12, ACCENT, true));
-        panel.addView(text(title, 24, Color.WHITE, true));
-        return panel;
     }
 
     private void addTile(LinearLayout row, android.view.View tile, boolean wide, float weight) {
