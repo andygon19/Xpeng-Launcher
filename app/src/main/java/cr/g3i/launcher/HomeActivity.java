@@ -63,6 +63,8 @@ public final class HomeActivity extends Activity {
     private TextView phoneStatus;
     private ConnectionDial connectionDial;
     private final BroadcastReceiver connectionChanges = new BroadcastReceiver() {
+        // targetSdk 28 uses the legacy BLUETOOTH permission; unavailable metadata is handled below.
+        @android.annotation.SuppressLint("MissingPermission")
         @Override public void onReceive(Context context, Intent intent) {
             String action = intent.getAction();
             if (BluetoothAdapter.ACTION_STATE_CHANGED.equals(action)
