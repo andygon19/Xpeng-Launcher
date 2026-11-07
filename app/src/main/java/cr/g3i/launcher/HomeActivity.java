@@ -166,9 +166,12 @@ public final class HomeActivity extends Activity {
             brand.addView(wordmarkRow);
         }
         brand.addView(text("G3i   /   " + (projection ? "PROYECCIÓN" : "CABINA"), 11, ACCENT, true));
-        header.addView(brand, new LinearLayout.LayoutParams(0, -2, 1));
+        boolean clockBelowBrand = getResources().getConfiguration().screenWidthDp < 600;
+        if (clockBelowBrand) header.setOrientation(LinearLayout.VERTICAL);
+        header.addView(brand, clockBelowBrand ? new LinearLayout.LayoutParams(-1, -2)
+                : new LinearLayout.LayoutParams(0, -2, 1));
         TextClock clock = new TextClock(this);
-        clock.setTextSize(24);
+        clock.setTextSize(72);
         clock.setTextColor(Color.WHITE);
         LinearLayout dateAndTime = column();
         dateAndTime.setGravity(Gravity.END);
@@ -178,10 +181,16 @@ public final class HomeActivity extends Activity {
                 java.util.Locale.getDefault(), "EEEdMMM");
         date.setFormat12Hour(dateFormat);
         date.setFormat24Hour(dateFormat);
-        date.setTextSize(12);
+        date.setTextSize(36);
         date.setTextColor(SECONDARY);
         dateAndTime.addView(date);
-        header.addView(dateAndTime);
+        if (clockBelowBrand) {
+            dateAndTime.setGravity(Gravity.CENTER_HORIZONTAL);
+            date.setGravity(Gravity.CENTER);
+            header.addView(dateAndTime, new LinearLayout.LayoutParams(-1, -2));
+        } else {
+            header.addView(dateAndTime);
+        }
         home.addView(header);
 
         LinearLayout modes = new LinearLayout(this);
@@ -428,8 +437,7 @@ public final class HomeActivity extends Activity {
                 return;
             }
             if (index == 5) {
-                open(new Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS, Uri.parse("package:" + getPackageName())),
-                        "La pantalla de permisos no está disponible");
+                openHotspotPermission();
                 return;
             }
             if (index >= 6) {
@@ -437,8 +445,10 @@ public final class HomeActivity extends Activity {
                 return;
             }
             if (index == 3 || index == 4) {
-                Intent picker = new Intent(Intent.ACTION_OPEN_DOCUMENT)
-                        .addCategory(Intent.CATEGORY_OPENABLE).setType("image/*");
+                Intent picker = new Intent(Intent.ACTION_GET_CONTENT)
+                        .setType("image/*")
+                        .putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"image/*"})
+                        .addCategory(Intent.CATEGORY_OPENABLE);
                 try {
                     startActivityForResult(picker, index == 3 ? PICK_PHOTO : PICK_LOGO);
                 } catch (ActivityNotFoundException exception) {
@@ -460,29 +470,64 @@ public final class HomeActivity extends Activity {
         }).show();
     }
 
+    private void openHotspotPermission() {
+        if (Settings.System.canWrite(this)) {
+            toast("Permiso para hotspot ya concedido");
+            return;
+        }
+        try {
+            startActivity(new Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS,
+                    Uri.parse("package:" + getPackageName())));
+            return;
+        } catch (ActivityNotFoundException ignored) {
+            // Some builds only expose the general settings list.
+        }
+        try {
+            startActivity(new Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS));
+        } catch (ActivityNotFoundException ignored) {
+            new AlertDialog.Builder(this).setTitle("Permiso de hotspot por ADB")
+                    .setMessage("Este firmware no muestra la pantalla. Ejecuta en ADB:\n\n"
+                            + "adb shell appops set " + getPackageName() + " WRITE_SETTINGS allow"
+                            + "\n\nDespués vuelve a abrir G3i Home.")
+                    .setPositiveButton("Entendido", null).show();
+        }
+    }
+
     @Override
     protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
         if ((request != PICK_PHOTO && request != PICK_LOGO) || result != RESULT_OK
                 || data == null || data.getData() == null) return;
-        Uri uri = data.getData();
+
+        String key = request == PICK_PHOTO ? "photo" : "logo";
+        android.util.AtomicFile destination = new android.util.AtomicFile(imageFile(key));
+        java.io.FileOutputStream stream = null;
         try {
-            getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
-            String key = request == PICK_PHOTO ? "photo" : "logo";
-            String previous = preferences.getString(key, null);
-            preferences.edit().putString(key, uri.toString()).apply();
-            String other = preferences.getString(request == PICK_PHOTO ? "logo" : "photo", null);
-            if (previous != null && !previous.equals(uri.toString()) && !previous.equals(other)) {
-                try {
-                    getContentResolver().releasePersistableUriPermission(Uri.parse(previous),
-                            Intent.FLAG_GRANT_READ_URI_PERMISSION);
-                } catch (SecurityException ignored) {
-                    // The previous image provider may already have revoked access.
+            android.graphics.Bitmap bitmap = android.graphics.ImageDecoder.decodeBitmap(
+                    android.graphics.ImageDecoder.createSource(getContentResolver(), data.getData()),
+                    (decoder, info, source) -> {
+                        decoder.setAllocator(android.graphics.ImageDecoder.ALLOCATOR_SOFTWARE);
+                        limitImageSize(decoder, info);
+                    });
+            try {
+                stream = destination.startWrite();
+                if (!bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, stream)) {
+                    throw new java.io.IOException("Could not encode selected image");
                 }
+                destination.finishWrite(stream);
+                stream = null;
+            } finally {
+                bitmap.recycle();
             }
-        } catch (SecurityException exception) {
-            toast("No se pudo conservar el acceso a la imagen");
+            render();
+        } catch (java.io.IOException | RuntimeException error) {
+            if (stream != null) destination.failWrite(stream);
+            toast("No se pudo importar la imagen seleccionada");
         }
+    }
+
+    private java.io.File imageFile(String key) {
+        return new java.io.File(getFilesDir(), key + ".png");
     }
 
     @Override
@@ -493,6 +538,10 @@ public final class HomeActivity extends Activity {
     }
 
     private boolean loadImage(ImageView image, String key) {
+        java.io.File imported = imageFile(key);
+        if (imported.isFile() && decodeImage(image, android.graphics.ImageDecoder.createSource(imported))) {
+            return true;
+        }
         String saved = preferences.getString(key, null);
         if (saved != null && decodeImage(image, android.graphics.ImageDecoder.createSource(
                 getContentResolver(), Uri.parse(saved)))) return true;
@@ -508,14 +557,18 @@ public final class HomeActivity extends Activity {
 
     private boolean decodeImage(ImageView image, android.graphics.ImageDecoder.Source source) {
         try {
-            image.setImageDrawable(android.graphics.ImageDecoder.decodeDrawable(source, (decoder, info, src) -> {
-                int longestSide = Math.max(info.getSize().getWidth(), info.getSize().getHeight());
-                decoder.setTargetSampleSize(Math.max(1, (int) Math.ceil(longestSide / 1600.0)));
-            }));
+            image.setImageDrawable(android.graphics.ImageDecoder.decodeDrawable(source,
+                    (decoder, info, src) -> limitImageSize(decoder, info)));
             return true;
         } catch (java.io.IOException | SecurityException exception) {
             return false;
         }
+    }
+
+    private static void limitImageSize(android.graphics.ImageDecoder decoder,
+                                       android.graphics.ImageDecoder.ImageInfo info) {
+        int longestSide = Math.max(info.getSize().getWidth(), info.getSize().getHeight());
+        decoder.setTargetSampleSize(Math.max(1, (int) Math.ceil(longestSide / 1600.0)));
     }
 
     private void showApps() {
