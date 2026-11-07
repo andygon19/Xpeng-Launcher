@@ -1,0 +1,11 @@
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/xpeng_icon_background"/>
+    <foreground>
+        <inset
+            android:drawable="@drawable/xpeng_mark"
+            android:insetLeft="25%"
+            android:insetRight="25%"
+            android:insetTop="37%"
+            android:insetBottom="37%"/>
+    </foreground>
+</adaptive-icon>
