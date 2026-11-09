@@ -7,8 +7,30 @@ android {
         applicationId 'cr.g3i.launcher'
         minSdk 28
         targetSdk 28
-        versionCode 8
-        versionName '0.1.7'
+        versionCode 9
+        versionName '0.1.8'
+    }
+    // Fixed signing key so every build shares one signature and the app updates in place
+    // (adb install -r) without an uninstall. The keystore never lives in the repo: CI supplies it
+    // from a GitHub Secret (decoded to a file, path + passwords passed as env vars); locally you set
+    // the same vars or -P properties. When none are set the build falls back to the default debug key.
+    def signingKeystore = System.getenv('SIGNING_KEYSTORE') ?: project.findProperty('signingKeystore')
+    signingConfigs {
+        g3i {
+            if (signingKeystore) {
+                storeFile file(signingKeystore)
+                storePassword System.getenv('SIGNING_STORE_PASSWORD') ?: project.findProperty('signingStorePassword')
+                keyAlias System.getenv('SIGNING_KEY_ALIAS') ?: project.findProperty('signingKeyAlias')
+                keyPassword System.getenv('SIGNING_KEY_PASSWORD') ?: project.findProperty('signingKeyPassword')
+            }
+        }
+    }
+    buildTypes {
+        debug {
+            if (signingKeystore) {
+                signingConfig signingConfigs.g3i
+            }
+        }
     }
     lint {
         // APK distributed directly to the G3i. Keep Play's target SDK check visible as a warning.

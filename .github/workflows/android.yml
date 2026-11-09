@@ -24,6 +24,25 @@ jobs:
           if [[ ! -f "$sdk/platforms/android-35/android.jar" || ! -x "$sdk/build-tools/36.0.0/aapt2" ]]; then
             "$sdk/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$sdk" 'platforms;android-35' 'build-tools;36.0.0'
           fi
+      - name: Preparar llave de firma fija
+        env:
+          SIGNING_KEYSTORE_B64: ${{ secrets.SIGNING_KEYSTORE_B64 }}
+          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+        run: |
+          if [[ -n "$SIGNING_KEYSTORE_B64" ]]; then
+            echo "$SIGNING_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/g3i.jks"
+            {
+              echo "SIGNING_KEYSTORE=$RUNNER_TEMP/g3i.jks"
+              echo "SIGNING_STORE_PASSWORD=$SIGNING_STORE_PASSWORD"
+              echo "SIGNING_KEY_ALIAS=$SIGNING_KEY_ALIAS"
+              echo "SIGNING_KEY_PASSWORD=$SIGNING_KEY_PASSWORD"
+            } >> "$GITHUB_ENV"
+            echo "Firma fija activada."
+          else
+            echo "Sin SIGNING_KEYSTORE_B64: se usará la llave debug por defecto (actualizar pedirá desinstalar)."
+          fi
       - run: gradle --no-daemon :app:assembleDebug :app:lintDebug
       - name: Preparar APK con el nombre del proyecto
         run: cp app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/Xpeng-Launcher-debug.apk"

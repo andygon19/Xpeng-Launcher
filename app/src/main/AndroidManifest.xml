@@ -5,6 +5,10 @@
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE"/>
     <uses-permission android:name="android.permission.WRITE_SETTINGS"/>
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="28"/>
+    <!-- Reading the XPeng vehicle battery (vendor VHAL properties) through the Car API. This is a
+         system/signature permission; on the G3i it is granted by root (pm grant / privileged app).
+         Without it BatteryReader catches the SecurityException and the home shows the battery as "—". -->
+    <uses-permission android:name="android.car.permission.CAR_VENDOR_EXTENSION"/>
     <application android:label="G3i Home" android:allowBackup="false"
         android:icon="@mipmap/ic_launcher_xpeng"
         android:roundIcon="@mipmap/ic_launcher_xpeng"
