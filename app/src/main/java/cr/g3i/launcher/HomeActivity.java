@@ -65,6 +65,8 @@ public final class HomeActivity extends Activity {
     private TextView phoneStatus;
     private TextView hotspotStatus;
     private String hotspotMessage = "";
+    private TextView batteryStatus;
+    private TextView vehicleLine;
     private ConnectionDial connectionDial;
     private final BroadcastReceiver connectionChanges = new BroadcastReceiver() {
         // targetSdk 28 uses the legacy BLUETOOTH permission; unavailable metadata is handled below.
@@ -126,6 +128,29 @@ public final class HomeActivity extends Activity {
             hotspotMessage = status;
             if (hotspotStatus != null) hotspotStatus.setText(status);
         });
+        BatteryReader.read(this, battery -> {
+            if (isDestroyed()) return;
+            refreshBattery(battery);
+        });
+    }
+
+    private void refreshBattery(BatteryReader.Battery battery) {
+        if (batteryStatus == null) return;
+        if (battery == null || !battery.available) {
+            batteryStatus.setText("—");
+            if (vehicleLine != null) vehicleLine.setText("");
+            return;
+        }
+        batteryStatus.setText(battery.socPercent + "%");
+        if (vehicleLine != null) {
+            StringBuilder line = new StringBuilder();
+            if (battery.rangeKm >= 0) line.append("Autonomía ").append(battery.rangeKm).append(" km");
+            if (battery.charging) {
+                if (line.length() > 0) line.append("  ·  ");
+                line.append("Cargando");
+            }
+            vehicleLine.setText(line.toString());
+        }
     }
 
     private void render() {
@@ -151,7 +176,7 @@ public final class HomeActivity extends Activity {
         logo.setContentDescription("XPENG");
         if (loadImage(logo, "logo")) {
             logo.setScaleType(ImageView.ScaleType.FIT_START);
-            brand.addView(logo, new LinearLayout.LayoutParams(dp(112), dp(36)));
+            brand.addView(logo, new LinearLayout.LayoutParams(dp(184), dp(60)));
         } else {
             logo.setImageResource(R.drawable.xpeng_mark);
             logo.setImportantForAccessibility(android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO);
@@ -308,7 +333,11 @@ public final class HomeActivity extends Activity {
         bluetoothStatus = addStatus(status, "BLUETOOTH");
         networkStatus = addStatus(status, "RED");
         phoneStatus = addStatus(status, "TELÉFONO");
+        batteryStatus = addStatus(status, "BATERÍA");
         panel.addView(status, new LinearLayout.LayoutParams(-1, -2));
+        vehicleLine = text("", 12, SECONDARY, false);
+        vehicleLine.setGravity(Gravity.CENTER);
+        panel.addView(vehicleLine);
         if (android.os.Build.VERSION.SDK_INT == android.os.Build.VERSION_CODES.P) {
             hotspotStatus = text(hotspotMessage, 12, SECONDARY, false);
             hotspotStatus.setGravity(Gravity.CENTER);
